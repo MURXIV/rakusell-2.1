@@ -1,4 +1,5 @@
 from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.users.permissions import IsAdminOrReadOnly
@@ -23,6 +24,8 @@ class PromptDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ActivePromptView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         scenario = request.query_params.get('scenario', 'general')
         text = PromptService.get_active_prompt(scenario)

@@ -5,11 +5,11 @@ djangorestframework-simplejwt==5.3.1
 django-cors-headers==4.3.1
 django-filter==24.2
 django-environ==0.11.2
-django-celery-beat==2.6.0
+django-celery-beat==2.7.0
 django-celery-results==2.5.1
 
 # Database
-psycopg2-binary==2.9.9
+psycopg2-binary
 
 # Redis + Celery
 redis==5.0.4
@@ -22,15 +22,12 @@ channels-redis==4.2.0
 daphne==4.1.2
 
 # AI
-openai==1.30.1
+openai>=1.40.0
 google-generativeai==0.5.4
-tiktoken==0.7.0
+tiktoken
 
 # RAG / Vector DB
-chromadb==1.0.0
-langchain==0.2.1
-langchain-openai==0.1.8
-langchain-community==0.2.1
+chromadb
 
 # Document processing
 pypdf==4.2.0
@@ -42,5 +39,6 @@ requests==2.32.2
 
 # Utils
 python-decouple==3.8
-Pillow==10.3.0
+Pillow
 celery[redis]==5.3.6
+cryptography==42.0.8

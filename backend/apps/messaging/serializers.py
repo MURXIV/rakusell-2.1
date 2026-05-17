@@ -3,6 +3,11 @@ from .models import Message
 
 
 class MessageSerializer(serializers.ModelSerializer):
+    content = serializers.SerializerMethodField()
+
+    def get_content(self, obj):
+        return obj.decrypted_content
+
     class Meta:
         model = Message
         fields = [

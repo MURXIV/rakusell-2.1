@@ -24,7 +24,7 @@
           <tr
             v-for="client in clients"
             :key="client.id"
-            @click="$router.push(`/clients/${client.id}`)"
+            @click="$router.push(`/app/clients/${client.id}`)"
             class="border-b hover:bg-gray-50 cursor-pointer"
           >
             <td class="px-4 py-3 font-medium text-gray-800">{{ client.name || '—' }}</td>

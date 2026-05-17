@@ -2,12 +2,14 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.clients.models import Client
+from apps.users.permissions import IsAdminOrReadOnly
 from .services import MessageService
 from .tasks import send_whatsapp_message
 
 
 class SendMessageView(APIView):
     """Manually send a message to a client (from admin panel)."""
+    permission_classes = [IsAdminOrReadOnly]
 
     def post(self, request):
         client_id = request.data.get('client_id')

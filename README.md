@@ -1,61 +1,105 @@
-# Rakusell WhatsApp AI чат-бот
+# Rakusell WhatsApp AI Bot
 
-Система для автоматических ответов клиентам в WhatsApp через ИИ, есть админка для управления чатами, клиентами и промптами
+Admin panel and backend for automatic WhatsApp replies through Green API and an AI provider.
 
-## Что умеет
+## Stack
 
-- Принимает сообщения из WhatsApp через Green API вебхук
-- Генерирует ответы через AI (DeepSeek (~2$ в использовании(+)) / OpenAI(-) / Gemini(-))
-- Помнит историю диалога каждого клиента
-- Ищет информацию в базе знаний перед ответом (RAG)
-- Показывает всё в админке в реальном времени
+- Backend: Django, Django REST Framework, Channels, Celery
+- Data: PostgreSQL, Redis, ChromaDB
+- Frontend: Vue 3, Vite, Pinia, Tailwind
+- Messaging: Green API
+- AI: DeepSeek, OpenAI, or Gemini
 
-## Стек
+## Local/Server Setup Without Docker
 
-- Django + PostgreSQL + Redis
-- Celery для очередей
-- ChromaDB для векторного поиска
-- Vue 3 + Tailwind для фронта
-- Green API для WhatsApp
-- Docker Compose всё это запускает
-
-## Запуск
+### 1. Backend
 
 ```bash
-cp backend/.env.example backend/.env
-# заполнить ключи в .env (таблица с ключами прилагается отдельно)
-
-docker-compose up --build
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
 ```
 
-Создать админа:
+Edit `backend/.env` before running:
+
+```env
+SECRET_KEY=<long-random-secret>
+DEBUG=False
+ALLOWED_HOSTS=your-domain.com,127.0.0.1
+CORS_ALLOWED_ORIGINS=https://your-domain.com
+DATABASE_URL=postgres://rakusell:<password>@localhost:5432/rakusell
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
+WEBHOOK_SECRET=<long-random-webhook-secret>
+FIELD_ENCRYPTION_KEY=<fernet-key>
+```
+
+Generate encryption key:
 
 ```bash
-docker-compose exec backend python manage.py createsuperuser
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Открыть: http://localhost:3000
+Run migrations and start the ASGI server:
 
-## Переменные окружения
-
-Скопировать `backend/.env.example` → `backend/.env` и заполнить:
-
-```
-GREEN_API_INSTANCE_ID=1
-GREEN_API_TOKEN=2
-DEEPSEEK_API_KEY=3
-OPENAI_API_KEY=4
-GEMINI_API_KEY=5
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+daphne -b 0.0.0.0 -p 8000 core.asgi:application
 ```
 
-Расшифровка цифр — в таблице которую я скину отдельно.
+Start workers in separate terminals:
 
-## Вебхук
-
-Green API должен слать вебхуки на:
-
-```
-https://твой-домен/webhook/whatsapp/
+```bash
+celery -A core worker -l info -Q default,messages,ai
+celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 ```
 
-Для локальной разработки нужен ngrok.
+### 2. ChromaDB
+
+```bash
+pip install chromadb
+chroma run --host 0.0.0.0 --port 8001
+```
+
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+For local development:
+
+```bash
+npm run dev -- --host 0.0.0.0 --port 3000
+```
+
+Configure frontend environment:
+
+```env
+VITE_API_URL=http://localhost:8000/api/v1
+VITE_WS_URL=ws://localhost:8000
+```
+
+On production use your public HTTPS/WSS URLs.
+
+## Webhook
+
+Green API webhook URL:
+
+```text
+https://your-domain.com/webhook/whatsapp/
+```
+
+Set `WEBHOOK_SECRET` in production. Without it the application refuses to start when `DEBUG=False`.
+
+## Security Notes
+
+- Do not commit `backend/.env` or `frontend/.env` with real secrets.
+- Public password reset is disabled. User password changes must be done by an authenticated admin through user management or Django admin.
+- `FIELD_ENCRYPTION_KEY` is required because client phones, context, and messages are encrypted at field level.

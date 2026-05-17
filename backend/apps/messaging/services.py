@@ -16,20 +16,23 @@ class MessageService:
 
     @staticmethod
     def save_inbound(client: Client, content: str, green_api_message_id: str) -> Optional[Message]:
-        if Message.objects.filter(green_api_message_id=green_api_message_id).exists():
-            return None
+        from django.utils import timezone
+        from django.db import IntegrityError
 
         chat, _ = Chat.objects.get_or_create(client=client)
 
-        message = Message.objects.create(
-            chat=chat,
-            direction=Message.Direction.INBOUND,
-            content=content,
-            green_api_message_id=green_api_message_id,
-            status=Message.Status.DELIVERED,
-        )
+        try:
+            message = Message.objects.create(
+                chat=chat,
+                direction=Message.Direction.INBOUND,
+                content=content,
+                green_api_message_id=green_api_message_id,
+                status=Message.Status.DELIVERED,
+            )
+        except IntegrityError:
+            # Duplicate green_api_message_id — already processed
+            return None
 
-        from django.utils import timezone
         chat.last_message_at = timezone.now()
         chat.unread_count += 1
         chat.save(update_fields=['last_message_at', 'unread_count'])
@@ -91,6 +94,15 @@ class GreenAPIClient:
         except httpx.RequestError as e:
             logger.error(f'Green API request error: {e}')
             return {'success': False, 'error': str(e)}
+
+    def send_typing(self, chat_id: str) -> None:
+        """Show 'typing...' indicator in WhatsApp (lasts ~5 sec)."""
+        url = self._url('sendChatAction')
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                client.post(url, json={'chatId': chat_id, 'message': 'typing'})
+        except Exception as e:
+            logger.warning(f'sendChatAction failed for {chat_id}: {e}')
 
     def get_instance_state(self) -> dict:
         url = self._url('getStateInstance')

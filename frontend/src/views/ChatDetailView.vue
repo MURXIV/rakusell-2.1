@@ -1,21 +1,32 @@
 <template>
   <div class="flex h-full">
-    <!-- Messages panel -->
     <div class="flex-1 flex flex-col">
-      <!-- Header -->
       <div class="bg-white border-b px-6 py-4 flex items-center gap-4">
         <button @click="$router.back()" class="text-gray-400 hover:text-gray-600">←</button>
         <div>
           <h3 class="font-semibold text-gray-800">{{ chat?.client?.name || chat?.client?.phone }}</h3>
           <p class="text-xs text-gray-400">{{ chat?.client?.phone }}</p>
         </div>
-        <div class="ml-auto flex items-center gap-2">
+        <div class="ml-auto flex items-center gap-3">
+          <button
+            v-if="chat?.client"
+            @click="toggleBot"
+            :disabled="savingBot"
+            class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
+            :class="chat.client.is_blocked ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'"
+            :title="chat.client.is_blocked ? 'Включить автоответы' : 'Отключить автоответы'"
+          >
+            <span
+              class="inline-block h-3 w-3 rounded-full"
+              :class="chat.client.is_blocked ? 'bg-red-500' : 'bg-green-500'"
+            ></span>
+            {{ chat.client.is_blocked ? 'Бот выключен' : 'Бот включён' }}
+          </button>
           <span :class="wsConnected ? 'bg-green-400' : 'bg-gray-300'" class="w-2 h-2 rounded-full"></span>
           <span class="text-xs text-gray-400">{{ wsConnected ? 'Live' : 'Offline' }}</span>
         </div>
       </div>
 
-      <!-- Messages -->
       <div ref="messagesEl" class="flex-1 overflow-y-auto p-6 space-y-3 bg-gray-50">
         <div
           v-for="msg in allMessages"
@@ -31,16 +42,15 @@
             ]"
             :style="msg.direction === 'outbound' ? 'background:linear-gradient(135deg,#0ABFB8,#08A89F)' : ''"
           >
-            <p>{{ msg.content }}</p>
+            <p class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
             <p :class="msg.direction === 'outbound' ? 'text-teal-100' : 'text-gray-400'" class="text-xs mt-1">
               {{ formatTime(msg.created_at) }}
-              <span v-if="msg.is_ai_generated" class="ml-1">🤖</span>
+              <span v-if="msg.is_ai_generated" class="ml-1">AI</span>
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Input -->
       <div class="bg-white border-t px-6 py-4 flex gap-3">
         <input
           v-model="newMessage"
@@ -60,17 +70,22 @@
       </div>
     </div>
 
-    <!-- Client sidebar -->
     <div v-if="chat?.client" class="w-72 bg-white border-l p-5 overflow-y-auto">
       <h4 class="font-semibold text-gray-700 mb-4">Клиент</h4>
       <div class="space-y-3 text-sm">
         <div>
           <p class="text-gray-400 text-xs">Имя</p>
-          <p class="font-medium">{{ chat.client.name || '—' }}</p>
+          <p class="font-medium">{{ chat.client.name || '-' }}</p>
         </div>
         <div>
           <p class="text-gray-400 text-xs">Телефон</p>
           <p class="font-medium">{{ chat.client.phone }}</p>
+        </div>
+        <div>
+          <p class="text-gray-400 text-xs">Автоответы</p>
+          <p :class="chat.client.is_blocked ? 'text-red-600' : 'text-green-600'" class="font-medium">
+            {{ chat.client.is_blocked ? 'Выключены' : 'Включены' }}
+          </p>
         </div>
         <div>
           <p class="text-gray-400 text-xs mb-1">Теги</p>
@@ -95,7 +110,7 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { chatsAPI, messagesAPI } from '@/api'
+import { chatsAPI, clientsAPI, messagesAPI } from '@/api'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { format } from 'date-fns'
 
@@ -106,34 +121,53 @@ const chat = ref(null)
 const historicMessages = ref([])
 const newMessage = ref('')
 const sending = ref(false)
+const savingBot = ref(false)
 const messagesEl = ref(null)
 
 const { messages: wsMessages, isConnected: wsConnected, connect } = useWebSocket(chatId)
 
-const allMessages = computed(() => [...historicMessages.value, ...wsMessages.value])
+const allMessages = computed(() => {
+  const byId = new Map()
+  for (const msg of [...historicMessages.value, ...wsMessages.value]) {
+    byId.set(msg.id, msg)
+  }
+  return Array.from(byId.values()).sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+})
 
 onMounted(async () => {
+  await loadChat()
+  connect()
+  await nextTick()
+  scrollToBottom()
+
+  setInterval(async () => {
+    const res = await chatsAPI.messages(chatId)
+    historicMessages.value = res.data.results || res.data
+    await nextTick()
+    scrollToBottom()
+  }, 3000)
+})
+
+async function loadChat() {
   const [chatRes, msgRes] = await Promise.all([
     chatsAPI.get(chatId),
     chatsAPI.messages(chatId),
   ])
   chat.value = chatRes.data
   historicMessages.value = msgRes.data.results || msgRes.data
-  connect()
-  await nextTick()
-  scrollToBottom()
+}
 
-  // Polling fallback — обновляем каждые 3 секунды
-  setInterval(async () => {
-    const res = await chatsAPI.messages(chatId)
-    const msgs = res.data.results || res.data
-    if (msgs.length !== historicMessages.value.length) {
-      historicMessages.value = msgs
-      await nextTick()
-      scrollToBottom()
-    }
-  }, 3000)
-})
+async function toggleBot() {
+  if (!chat.value?.client || savingBot.value) return
+  savingBot.value = true
+  try {
+    const nextBlocked = !chat.value.client.is_blocked
+    await clientsAPI.update(chat.value.client.id, { is_blocked: nextBlocked })
+    chat.value.client.is_blocked = nextBlocked
+  } finally {
+    savingBot.value = false
+  }
+}
 
 async function sendMessage() {
   if (!newMessage.value.trim() || sending.value) return

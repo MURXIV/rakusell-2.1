@@ -1,5 +1,6 @@
 from django.db import models
 from apps.chats.models import Chat
+from core.encryption import encrypt, decrypt
 
 
 class Message(models.Model):
@@ -46,5 +47,14 @@ class Message(models.Model):
             models.Index(fields=['direction', 'status']),
         ]
 
+    def save(self, *args, **kwargs):
+        if self.content:
+            self.content = encrypt(self.content)
+        super().save(*args, **kwargs)
+
+    @property
+    def decrypted_content(self) -> str:
+        return decrypt(self.content)
+
     def __str__(self):
-        return f'[{self.direction}] {self.content[:50]}'
+        return f'[{self.direction}] {self.decrypted_content[:50]}'

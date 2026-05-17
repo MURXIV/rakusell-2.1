@@ -35,7 +35,7 @@
           @click="dateFrom = ''; dateTo = ''"
           class="text-sm text-gray-400 hover:text-gray-600 px-2"
           title="Сбросить даты"
-        >✕</button>
+        >x</button>
       </div>
     </div>
 
@@ -48,6 +48,7 @@
             <th class="text-left px-4 py-3 text-gray-600 font-medium">Клиент</th>
             <th class="text-left px-4 py-3 text-gray-600 font-medium">Телефон</th>
             <th class="text-left px-4 py-3 text-gray-600 font-medium">Статус</th>
+            <th class="text-left px-4 py-3 text-gray-600 font-medium">Бот</th>
             <th class="text-left px-4 py-3 text-gray-600 font-medium">Последнее сообщение</th>
             <th class="text-left px-4 py-3 text-gray-600 font-medium">Непрочитанных</th>
           </tr>
@@ -56,7 +57,7 @@
           <tr
             v-for="chat in chats"
             :key="chat.id"
-            @click="$router.push(`/chats/${chat.id}`)"
+            @click="$router.push(`/app/chats/${chat.id}`)"
             class="border-b hover:bg-gray-50 cursor-pointer transition-colors"
           >
             <td class="px-4 py-3 font-medium text-gray-800">
@@ -68,8 +69,23 @@
                 {{ statusLabel(chat.status) }}
               </span>
             </td>
+            <td class="px-4 py-3">
+              <button
+                @click.stop="toggleBot(chat)"
+                :disabled="savingBotId === chat.client.id"
+                class="inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+                :class="chat.client.is_blocked ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'"
+                :title="chat.client.is_blocked ? 'Включить автоответы для клиента' : 'Отключить автоответы для клиента'"
+              >
+                <span
+                  class="inline-block h-3 w-3 rounded-full"
+                  :class="chat.client.is_blocked ? 'bg-red-500' : 'bg-green-500'"
+                ></span>
+                {{ chat.client.is_blocked ? 'Выкл' : 'Вкл' }}
+              </button>
+            </td>
             <td class="px-4 py-3 text-gray-500">
-              {{ chat.last_message_at ? formatDate(chat.last_message_at) : '—' }}
+              {{ chat.last_message_at ? formatDate(chat.last_message_at) : '-' }}
             </td>
             <td class="px-4 py-3">
               <span v-if="chat.unread_count > 0" class="bg-green-500 text-white text-xs rounded-full px-2 py-0.5">
@@ -90,7 +106,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { chatsAPI } from '@/api'
+import { chatsAPI, clientsAPI } from '@/api'
 import { format } from 'date-fns'
 
 const chats = ref([])
@@ -99,6 +115,7 @@ const search = ref('')
 const statusFilter = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
+const savingBotId = ref(null)
 
 async function fetchChats() {
   loading.value = true
@@ -115,7 +132,18 @@ async function fetchChats() {
   }
 }
 
-watch([search, statusFilter, dateFrom, dateTo], fetchChats, { debounce: 300 })
+async function toggleBot(chat) {
+  savingBotId.value = chat.client.id
+  try {
+    const nextBlocked = !chat.client.is_blocked
+    await clientsAPI.update(chat.client.id, { is_blocked: nextBlocked })
+    chat.client.is_blocked = nextBlocked
+  } finally {
+    savingBotId.value = null
+  }
+}
+
+watch([search, statusFilter, dateFrom, dateTo], fetchChats)
 onMounted(fetchChats)
 
 function formatDate(dt) {

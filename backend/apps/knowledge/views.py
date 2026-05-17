@@ -1,5 +1,6 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from apps.users.permissions import IsAdminOrReadOnly
 from .models import KnowledgeBase
 from .serializers import KnowledgeBaseSerializer
@@ -22,6 +23,11 @@ class KnowledgeDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = KnowledgeBaseSerializer
     permission_classes = [IsAdminOrReadOnly]
 
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        # Re-index on update
+        index_document_task.apply_async(args=[instance.id], queue='default')
+
     def perform_destroy(self, instance):
         # Remove from vector DB before deleting
         from apps.rag.services import rag_service
@@ -30,3 +36,16 @@ class KnowledgeDetailView(generics.RetrieveUpdateDestroyAPIView):
         except Exception:
             pass
         instance.delete()
+
+
+class KnowledgeReindexView(APIView):
+    """Manually trigger re-indexing of a knowledge base document."""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def post(self, request, pk):
+        try:
+            doc = KnowledgeBase.objects.get(pk=pk)
+        except KnowledgeBase.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        index_document_task.apply_async(args=[doc.id], queue='default')
+        return Response({'detail': 'Reindexing started.', 'id': doc.id})

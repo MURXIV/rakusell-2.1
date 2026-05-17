@@ -39,5 +39,10 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Private
+# Private — never commit these
 keys_for_employer.txt
+ключи.txt
+note.txt
+ТЗ для выполнения/
+*.txt
+!requirements*.txt

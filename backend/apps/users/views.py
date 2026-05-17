@@ -1,4 +1,4 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import User
@@ -25,20 +25,19 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
 
 
-class ResetPasswordView(APIView):
-    permission_classes = [permissions.AllowAny]
+class UserPasswordView(APIView):
+    permission_classes = [IsAdmin]
 
-    def post(self, request):
-        username = request.data.get('username', '').strip()
-        new_password = request.data.get('new_password', '').strip()
-
-        if not username or not new_password or len(new_password) < 6:
-            return Response({'error': 'Invalid data'}, status=400)
+    def post(self, request, pk):
+        password = request.data.get('password', '').strip()
+        if len(password) < 6:
+            return Response({'error': 'Password must be at least 6 characters'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(username=username)
-            user.set_password(new_password)
-            user.save()
-            return Response({'status': 'ok'})
+            user = User.objects.get(pk=pk)
         except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=404)
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        return Response({'status': 'ok'})

@@ -1,10 +1,12 @@
 import django_filters
 from rest_framework import generics, filters
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Chat
 from .serializers import ChatSerializer
 from apps.messaging.models import Message
 from apps.messaging.serializers import MessageSerializer
+from apps.users.permissions import IsAdminOrReadOnly
 
 
 class ChatFilter(django_filters.FilterSet):
@@ -20,6 +22,7 @@ class ChatFilter(django_filters.FilterSet):
 class ChatListView(generics.ListAPIView):
     queryset = Chat.objects.select_related('client').order_by('-last_message_at')
     serializer_class = ChatSerializer
+    permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, DjangoFilterBackend]
     search_fields = ['client__phone', 'client__name']
     filterset_class = ChatFilter
@@ -28,10 +31,12 @@ class ChatListView(generics.ListAPIView):
 class ChatDetailView(generics.RetrieveUpdateAPIView):
     queryset = Chat.objects.select_related('client')
     serializer_class = ChatSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 
 class ChatMessagesView(generics.ListAPIView):
     serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Message.objects.filter(

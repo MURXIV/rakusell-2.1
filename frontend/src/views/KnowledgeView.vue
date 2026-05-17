@@ -15,7 +15,8 @@
               <span class="text-lg">{{ docIcon(doc.doc_type) }}</span>
               <h3 class="font-semibold text-gray-800">{{ doc.title }}</h3>
               <span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{{ doc.doc_type }}</span>
-              <span v-if="doc.is_indexed" class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">Проиндексирован</span>
+              <span v-if="doc.is_indexed && doc.chunk_count > 0" class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">Проиндексирован</span>
+              <span v-else-if="!doc.is_indexed && doc.doc_type === 'url' && doc.chunk_count === 0" class="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full" title="Сайт заблокировал скачивание (Cloudflare/JS). Вставьте текст вручную.">⚠️ Ошибка скачивания</span>
               <span v-else class="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full">Ожидает</span>
             </div>
             <p class="text-sm text-gray-500">{{ doc.chunk_count }} чанков</p>
@@ -27,6 +28,14 @@
               class="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 rounded px-2 py-1"
             >
               {{ expandedDoc === doc.id ? 'Скрыть' : 'Эмбеддинги' }}
+            </button>
+            <button
+              @click="reindexDoc(doc)"
+              :disabled="reindexingId === doc.id"
+              class="text-xs text-teal-600 hover:text-teal-800 border border-teal-200 rounded px-2 py-1 disabled:opacity-50"
+              title="Переиндексировать документ"
+            >
+              {{ reindexingId === doc.id ? '⏳' : '🔄' }}
             </button>
             <button @click="deleteDoc(doc.id)" class="text-gray-400 hover:text-red-500">🗑️</button>
           </div>
@@ -82,7 +91,9 @@
           <div v-if="form.doc_type === 'url'">
             <label class="block text-sm font-medium text-gray-700 mb-1">URL</label>
             <input v-model="form.source_url" type="url" placeholder="https://example.com/page" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-            <p class="text-xs text-gray-400 mt-1">Страница будет автоматически скачана и проиндексирована</p>
+            <p class="text-xs text-gray-400 mt-1">⚠️ Страница скачивается автоматически. Если сайт защищён Cloudflare или требует JS — вставьте текст вручную ниже.</p>
+            <label class="block text-sm font-medium text-gray-700 mt-3 mb-1">Текст страницы (запасной вариант)</label>
+            <textarea v-model="form.content" rows="5" placeholder="Вставьте текст вручную если автоскачивание не работает..." class="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
           </div>
           <div class="flex justify-end gap-3">
             <button type="button" @click="showForm = false" class="px-4 py-2 text-sm text-gray-600">Отмена</button>
@@ -104,6 +115,7 @@ const form = ref({ title: '', doc_type: 'faq', content: '', file: null, source_u
 const expandedDoc = ref(null)
 const chunks = ref([])
 const loadingChunks = ref(false)
+const reindexingId = ref(null)
 
 onMounted(async () => {
   const { data } = await knowledgeAPI.list()
@@ -142,6 +154,28 @@ async function uploadDoc() {
   docs.value = data.results || data
   showForm.value = false
   form.value = { title: '', doc_type: 'faq', content: '', file: null, source_url: '' }
+}
+
+async function reindexDoc(doc) {
+  reindexingId.value = doc.id
+  try {
+    await knowledgeAPI.reindex(doc.id)
+    // Poll for updated chunk_count for up to 15 seconds
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 1000))
+      const { data } = await knowledgeAPI.get(doc.id)
+      const target = docs.value.find(d => d.id === doc.id)
+      if (target) {
+        target.chunk_count = data.chunk_count
+        target.is_indexed = data.is_indexed
+      }
+      if (data.chunk_count > 0) break
+    }
+  } catch (e) {
+    alert('Ошибка переиндексации: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    reindexingId.value = null
+  }
 }
 
 async function deleteDoc(id) {

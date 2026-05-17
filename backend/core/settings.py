@@ -2,15 +2,21 @@ import os
 from pathlib import Path
 from datetime import timedelta
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
 
-SECRET_KEY = env('SECRET_KEY', default='django-insecure-change-me')
-DEBUG = env('DEBUG', default=True)
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+SECRET_KEY = env('SECRET_KEY', default='')
+DEBUG = env.bool('DEBUG', default=False)
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'] if DEBUG else [])
+
+if not SECRET_KEY:
+    raise ImproperlyConfigured('SECRET_KEY must be set in backend/.env')
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured('ALLOWED_HOSTS must be set when DEBUG=False')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -125,10 +131,10 @@ REST_FRAMEWORK = {
     },
 }
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     'http://localhost:3000',
     'http://127.0.0.1:3000',
-]
+])
 CORS_ALLOW_CREDENTIALS = True
 
 AUTH_USER_MODEL = 'users.User'
@@ -144,15 +150,28 @@ DEEPSEEK_API_KEY = env('DEEPSEEK_API_KEY', default='')
 AI_MODEL = env('AI_MODEL', default='gpt-4o-mini')
 AI_MAX_TOKENS = env.int('AI_MAX_TOKENS', default=1000)
 AI_HISTORY_LIMIT = env.int('AI_HISTORY_LIMIT', default=20)
+AI_PROMPT_SCENARIO = env('AI_PROMPT_SCENARIO', default='sales')
+AI_TIMEOUT_SECONDS = env.int('AI_TIMEOUT_SECONDS', default=25)
+MESSAGE_GROUPING_SECONDS = env.int('MESSAGE_GROUPING_SECONDS', default=25)
+BOT_TIME_ZONE = env('BOT_TIME_ZONE', default='Asia/Qyzylorda')
+RESPOND_TO_GROUPS = env.bool('RESPOND_TO_GROUPS', default=False)
 
 CHROMA_HOST = env('CHROMA_HOST', default='localhost')
 CHROMA_PORT = env.int('CHROMA_PORT', default=8001)
 CHROMA_COLLECTION = env('CHROMA_COLLECTION', default='rakusell_knowledge')
 RAG_DISTANCE_THRESHOLD = env.float('RAG_DISTANCE_THRESHOLD', default=0.7)
 RAG_TOP_K = env.int('RAG_TOP_K', default=5)
+RAG_EMBEDDING_PROVIDER = env('RAG_EMBEDDING_PROVIDER', default='local')
 RAG_EMBEDDING_MODEL = env('RAG_EMBEDDING_MODEL', default='text-embedding-3-small')
 
 WEBHOOK_SECRET = env('WEBHOOK_SECRET', default='')
+
+FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY', default='')
+
+if not DEBUG and not WEBHOOK_SECRET:
+    raise ImproperlyConfigured('WEBHOOK_SECRET must be set when DEBUG=False')
+if not FIELD_ENCRYPTION_KEY:
+    raise ImproperlyConfigured('FIELD_ENCRYPTION_KEY must be set in backend/.env')
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -161,7 +180,18 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ── Security headers (safe in both dev and prod) ──────────────────────────────
+SECURE_CONTENT_TYPE_NOSNIFF = True       # X-Content-Type-Options: nosniff
+X_FRAME_OPTIONS = 'DENY'                 # X-Frame-Options: DENY
+SECURE_BROWSER_XSS_FILTER = True         # X-XSS-Protection (older browsers)
+
+# In production set these via nginx/reverse-proxy or enable here:
+# SECURE_SSL_REDIRECT = True
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
+# SECURE_HSTS_SECONDS = 31536000
+
 LANGUAGE_CODE = 'ru-ru'
-TIME_ZONE = 'UTC'
+TIME_ZONE = BOT_TIME_ZONE
 USE_I18N = True
 USE_TZ = True

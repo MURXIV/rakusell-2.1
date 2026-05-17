@@ -23,7 +23,7 @@ def send_whatsapp_message(self, message_id: int):
 
         result = green_api.send_message(
             chat_id=client.chat_id,
-            message=message.content,
+            message=message.decrypted_content,
         )
 
         if result['success']:
@@ -33,7 +33,7 @@ def send_whatsapp_message(self, message_id: int):
 
             LogService.info(
                 'message_sent',
-                f'Sent to {client.phone}: {message.content[:80]}',
+                f'Sent to {client.decrypted_phone}: {message.decrypted_content[:80]}',
                 client=client,
                 payload={'latency_ms': result.get('latency_ms', 0)},
             )

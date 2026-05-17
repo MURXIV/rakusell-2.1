@@ -1,4 +1,5 @@
 from datetime import timedelta
+from time import perf_counter
 
 from django.db import connection
 from django.utils import timezone
@@ -26,7 +27,7 @@ def health_check(request):
     try:
         from django.conf import settings
         import redis
-        r = redis.from_url(settings.CELERY_BROKER_URL)
+        r = redis.from_url(settings.CELERY_BROKER_URL, socket_connect_timeout=1, socket_timeout=1)
         r.ping()
         checks['redis'] = {'status': 'ok'}
     except Exception as e:
@@ -38,25 +39,25 @@ def health_check(request):
         from django.conf import settings
         import chromadb
         client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
+        start = perf_counter()
         client.heartbeat()
-        checks['chromadb'] = {'status': 'ok'}
+        checks['chromadb'] = {'status': 'ok', 'latency_ms': int((perf_counter() - start) * 1000)}
     except Exception as e:
         checks['chromadb'] = {'status': 'error', 'detail': str(e)}
         overall = 'degraded'
 
-    # Celery workers (check via Redis inspect)
+    # Celery workers
     try:
-        from django.conf import settings
-        import redis
-        r = redis.from_url(settings.CELERY_BROKER_URL)
-        # Active Celery workers register heartbeats in Redis
-        worker_keys = r.keys('celery@*')
+        from core.celery import app as celery_app
+        ping = celery_app.control.inspect(timeout=1).ping() or {}
+        worker_count = len(ping)
+        if worker_count == 0:
+            raise RuntimeError('No active Celery workers responded')
         checks['celery'] = {
-            'status': 'ok' if worker_keys else 'warning',
-            'workers': len(worker_keys),
+            'status': 'ok',
+            'workers': worker_count,
+            'worker_names': list(ping.keys()),
         }
-        if not worker_keys:
-            overall = 'degraded'
     except Exception as e:
         checks['celery'] = {'status': 'error', 'detail': str(e)}
         overall = 'degraded'

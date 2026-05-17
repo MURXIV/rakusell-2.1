@@ -34,10 +34,20 @@ class WhatsAppWebhookView(APIView):
 
             type_webhook = payload.get('typeWebhook', '')
             if type_webhook not in ('incomingMessageReceived', 'outgoingMessageStatus'):
+                LogService.warning(
+                    'webhook',
+                    f'Webhook ignored: unsupported type={type_webhook}',
+                    payload=payload,
+                )
                 return Response({'status': 'ignored'}, status=status.HTTP_200_OK)
 
             id_message = payload.get('idMessage', '')
             if not id_message:
+                LogService.warning(
+                    'webhook',
+                    f'Webhook ignored: missing idMessage | type={type_webhook}',
+                    payload=payload,
+                )
                 return Response({'status': 'ignored'}, status=status.HTTP_200_OK)
 
             LogService.info(
@@ -66,7 +76,7 @@ class WhatsAppWebhookView(APIView):
             return False
         body = request.body
         expected = hmac.new(
-            settings.WEBHOOK_SECRET.encode(),
+            settings.WEBHOOK_SECRET.encode('utf-8'),
             body,
             hashlib.sha256
         ).hexdigest()

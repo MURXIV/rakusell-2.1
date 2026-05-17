@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Optional
 
 from django.conf import settings
 
@@ -14,6 +13,7 @@ class AIService:
         self.model = settings.AI_MODEL
         self.max_tokens = settings.AI_MAX_TOKENS
         self.history_limit = settings.AI_HISTORY_LIMIT
+        self.timeout = settings.AI_TIMEOUT_SECONDS
 
     def generate_response(
         self,
@@ -27,7 +27,7 @@ class AIService:
         if client_context:
             full_system += f'\n\n--- Информация о клиенте ---\n{client_context}\n--- Конец информации о клиенте ---'
         if context:
-            full_system += f'\n\n--- Relevant context ---\n{context}\n--- End context ---'
+            full_system += f'\n\n--- База знаний ---\n{context}\n--- Конец базы знаний ---'
 
         trimmed_history = history[-self.history_limit:]
 
@@ -49,7 +49,7 @@ class AIService:
     def _openai(self, system_prompt: str, history: list, user_message: str) -> dict:
         from openai import OpenAI
 
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=self.timeout)
 
         messages = [{'role': 'system', 'content': system_prompt}]
         messages.extend(history)
@@ -59,7 +59,7 @@ class AIService:
             model=self.model,
             messages=messages,
             max_tokens=self.max_tokens,
-            temperature=0.7,
+            temperature=0.45,
         )
 
         return {
@@ -73,6 +73,7 @@ class AIService:
         client = OpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
             base_url='https://api.deepseek.com/v1',
+            timeout=self.timeout,
         )
 
         messages = [{'role': 'system', 'content': system_prompt}]
@@ -83,7 +84,7 @@ class AIService:
             model=self.model,
             messages=messages,
             max_tokens=self.max_tokens,
-            temperature=0.7,
+            temperature=0.45,
         )
 
         return {
@@ -106,7 +107,10 @@ class AIService:
             gemini_history.append({'role': role, 'parts': [msg['content']]})
 
         chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(user_message)
+        response = chat.send_message(
+            user_message,
+            generation_config={'temperature': 0.45},
+        )
 
         return {
             'content': response.text,
